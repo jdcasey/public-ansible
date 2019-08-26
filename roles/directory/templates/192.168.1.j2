@@ -1,0 +1,17 @@
+;
+; BIND reverse data file for local loopback interface
+;
+$TTL    604800
+@       IN      SOA     {{ domain }}. root.{{ domain }}. (
+                        2017101902      ; Serial
+                         604800         ; Refresh
+                          86400         ; Retry
+                        2419200         ; Expire
+                         604800 )       ; Negative Cache TTL
+;
+@        IN      NS      root.{{ domain }}.
+
+{{ dir_server.split('\.')[-1] }}.1.168 IN  PTR  root.{{ domain }}.
+
+{% for host in domain_hosts %}{{host.address.split('\.')[-1]}}.1.168 IN  PTR  {{ host.name }}.{{ domain }}.
+{% endfor %}

@@ -1,0 +1,106 @@
+# This file is part of John Casey's public-ansible repository.
+
+# This is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This software is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this software.  If not, see <https://www.gnu.org/licenses/>.
+---
+  - hosts: root-servers
+    remote_user: root
+    roles:
+      - role: directory
+        when: install_directory
+
+      - role: vm-install
+        vm_name: emby
+        vm_size: 8
+        vm_ram: 1024
+        vm_cpus: 1
+        vm_ip: "{{ hostvars[groups['emby-servers'][0]]['ansible_host'] }}"
+
+  - hosts: nfs-servers
+    remote_user: root
+    roles:
+      - role: nfs-server
+
+      - role: nfs-lvm-export
+        export_name: 'emby-media'
+        export_size: 500G
+        export_uid: '{{emby_uid}}'
+        export_gid: '{{emby_gid}}'
+
+      - role: nfs-lvm-export
+        export_name: 'emby-downloads'
+        export_size: 100G
+        export_uid: '{{emby_uid}}'
+        export_gid: '{{emby_gid}}'
+
+      - role: nfs-lvm-export
+        export_name: 'emby-config'
+        export_size: 10G
+        export_uid: '{{emby_uid}}'
+        export_gid: '{{emby_gid}}'
+
+  - hosts: emby-servers
+    remote_user: root
+    roles:
+      - role: common
+      - role: docker-server
+
+      - role: nfs-client
+        export_name: 'emby-media'
+        exports_dir: exports
+        export_mount: '/opt/emby/media'
+        export_uid: '{{ emby_uid }}'
+        export_gid: '{{ emby_gid }}'
+        nfs_server: "{{ hostvars[groups['nfs-servers'][0]]['ansible_host'] }}"
+
+      - role: nfs-client
+        export_name: 'emby-downloads'
+        exports_dir: exports
+        export_mount: '/opt/emby/downloads'
+        export_uid: '{{ emby_uid }}'
+        export_gid: '{{ emby_gid }}'
+        nfs_server: "{{ hostvars[groups['nfs-servers'][0]]['ansible_host'] }}"
+
+      - role: nfs-client
+        export_name: 'emby-config'
+        exports_dir: exports
+        export_mount: '/opt/emby/config'
+        export_uid: '{{ emby_uid }}'
+        export_gid: '{{ emby_gid }}'
+        nfs_server: "{{ hostvars[groups['nfs-servers'][0]]['ansible_host'] }}"
+
+    tasks:
+      - name: "deploy Emby docker container"
+        docker_container:
+          name: emby
+          image: emby/embyserver:latest
+          state: started
+          restart_policy: always
+          volumes:
+            - /opt/emby/config:/config
+            - /opt/emby/media:/mnt/media
+          ports:
+            - 8096:8096
+            - 8920:8920
+          env: 
+            UID: "{{ emby_uid }}"
+            GID: "{{ emby_gid }}"
+
+      - name: "Emby :: open ports"
+        firewalld:
+          port: '{{ item }}'
+          permanent: yes
+          state: enabled
+        with_items:
+          - 8096/tcp
+          - 8920/tcp

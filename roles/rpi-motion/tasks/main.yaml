@@ -1,0 +1,102 @@
+# This file is part of John Casey's public-ansible repository.
+
+# This is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This software is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this software.  If not, see <https://www.gnu.org/licenses/>.
+
+---
+- name: install packages
+  become: yes
+  apt:
+    name: '{{ packages }}'
+    state: present
+  vars:
+    packages:
+      - python3-pip
+      - python3-dev
+      - python3-setuptools
+      - python3-virtualenv
+      - build-essential
+      - git
+      - motion
+
+- name: remove .rpi.motion virtualenv directory
+  file:
+    path: /home/pi/.rpi.motion/venv
+    state: missing
+
+- name: create .rpi.motion directory
+  file:
+    path: "{{ item }}"
+    state: directory
+  with_items:
+    - /home/pi/.rpi.motion
+    - /home/pi/.rpi.motion/images
+
+- name: create config files
+  template:
+    src: "templates/{{ item }}.j2"
+    dest: "/home/pi/.rpi.motion/{{ item }}"
+  with_items:
+    - motion.conf
+    - config.yml
+
+- name: create rpi-motion config
+  template:
+    src: templates/config.yml.j2
+    dest: /home/pi/.rpi.motion/config.yml
+
+- name: setup virtualenv
+  command: "virtualenv --python=/usr/bin/python3 venv"
+  args:
+    chdir: /home/pi/.rpi.motion
+    creates: /home/pi/.rpi.motion/venv
+
+- name: upgrade pip
+  command: "/home/pi/.rpi.motion/venv/bin/pip install pip --upgrade"
+  register: pip_upgrade
+  changed_when: "False == (pip_upgrade.stdout | regex_search('already up-to-date'))"
+
+- name: clone rpi-motion sources
+  git:
+    repo: https://github.com/jdcasey/rpi-motion.git
+    dest: /home/pi/rpi-motion
+
+- name: install rpi-motion
+  command: "/home/pi/.rpi.motion/venv/bin/pip install ."
+  args:
+    chdir: /home/pi/rpi-motion
+    creates: /home/pi/.rpi.motion/venv/bin/rpi-motion-bot
+
+- name: install rpi-motion service
+  become: yes
+  copy:
+    src: "files/{{ item }}"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: 0755
+  with_items:
+    - rpi-motion.service
+    - motion-custom.service
+  notify:
+    - systemd reload
+    - systemd restart rpi-motion
+    - systemd restart motion-custom
+
+- name: ensure motion service is disabled
+  become: yes
+  systemd:
+    name: motion
+    enabled: false
+    state: stopped
+

@@ -1,0 +1,93 @@
+# This file is part of John Casey's public-ansible repository.
+
+# This is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This software is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this software.  If not, see <https://www.gnu.org/licenses/>.
+---
+- hosts: root-servers
+  remote_user: root
+  roles:
+    - role: common
+    - role: directory
+      when: install_directory
+
+  tasks:
+    - name: install packages
+      yum:
+        name: '{{ item }}'
+        state: present
+      with_items:
+        - '@^Virtualization Host'
+        - '@Development Tools'
+        - nfs-utils
+        - python-devel
+        - libvirt-devel
+        - libvirt-daemon-kvm
+        - libvirt-python
+        - libxslt-devel
+        - libxml2-devel
+
+    - name: enable and start libvirt
+      service:
+        name: libvirtd
+        enabled: yes
+        state: started
+
+    - name: detect presence of virbr0
+      shell: "/usr/bin/virsh net-list | grep default"
+      register: virbr0_stat
+      ignore_errors: yes
+      changed_when: false
+
+    - name: destroy virbr0
+      shell: "/usr/bin/virsh net-destroy default"
+      register: virbr0_destroy
+      when: virbr0_stat | succeeded
+
+    - name: undefine virbr0
+      shell: "/usr/bin/virsh net-undefine default"
+      register: virbr0_undefine
+      when: virbr0_stat | succeeded and virbr0_destroy | succeeded
+
+    - name: restart libvirt
+      service:
+        name: libvirtd
+        state: restarted
+      when: virbr0_stat | succeeded and virbr0_undefine | succeeded
+
+    - name: autostart libvirt storage pool
+      shell: "/usr/bin/virsh pool-autostart {{ item }}"
+      ignore_errors: yes
+      with_items:
+        - default
+
+    - name: start libvirt storage pool
+      shell: "/usr/bin/virsh pool-start {{ item }}"
+      ignore_errors: yes
+      with_items:
+        - default
+
+    - name: enable br0
+      template:
+        src: templates/root/ifcfg-br0.j2
+        dest: /etc/sysconfig/network-scripts/ifcfg-br0
+      # notify:
+      #   - system restart
+
+    - name: switch main ethernet to use br0
+      template:
+        src: templates/root/ifcfg-em1.j2
+        dest: "/etc/sysconfig/network-scripts/ifcfg-em1"
+      # notify:
+      #   - system restart
+
+

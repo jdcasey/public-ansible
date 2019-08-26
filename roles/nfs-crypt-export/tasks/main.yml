@@ -1,0 +1,48 @@
+# This file is part of John Casey's public-ansible repository.
+
+# This is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This software is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this software.  If not, see <https://www.gnu.org/licenses/>.
+
+---
+- name: "NFS-Crypt/{{ export_name }} :: make /exports/{{ export_name }}"
+  file:
+    path: "/exports-crypted"
+    state: directory
+    owner: 0
+    group: 0
+
+- name: "NFS-Crypt/{{ export_name }} :: make /exports/{{ export_name }}"
+  file:
+    path: "/exports-crypted/{{ export_name }}"
+    state: directory
+    owner: "{{ export_uid|default(0) }}"
+    group: "{{ export_gid|default(0) }}"
+
+- name: "NFS-Crypt/{{ export_name }} :: add {{ export_name }} to crypttab"
+  crypttab:
+    backing_device: "UUID={{ disk_uuid }}"
+    name: "{{ export_name }}"
+    state: present
+
+- name: "NFS-Crypt/{{ export_name }} :: add {{ export_name }} to fstab"
+  mount:
+    src: "/dev/mapper/{{ export_name }}"
+    path: "/exports-crypted/{{ export_name }}"
+    fstype: xfs
+    state: mounted
+
+- name: "NFS-Crypt/{{ export_name }} :: setup NFS exports"
+  template:
+    src: templates/nfs-exports.j2
+    dest: "/etc/exports.d/{{ export_name }}.exports"
+  notify: reinit nfs mounts

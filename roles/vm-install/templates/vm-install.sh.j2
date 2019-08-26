@@ -1,0 +1,45 @@
+#!/bin/bash
+
+# This file is part of John Casey's public-ansible repository.
+
+# This is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This software is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this software.  If not, see <https://www.gnu.org/licenses/>.
+
+	# --console pty,target_type=serial \
+/usr/bin/virt-install \
+	--connect=qemu:///system \
+	--network bridge=br0 \
+	--initrd-inject=/root/vm-init/{{ vm_name }}-ks.cfg \
+	--extra-args="console=ttyS0,115200 serial rd_NO_PLYMOUTH ks=file:/{{ vm_name }}-ks.cfg" \
+	--name={{ vm_name }} \
+	--disk="pool=default,size={{ vm_size }}" \
+	--ram={{ vm_ram }} \
+	--vcpus={{ vm_cpus }} \
+	--check-cpu \
+	--accelerate \
+	--os-type=linux \
+	--os-variant=centos7.0 \
+	--hvm \
+	--location="{{ centos_image }}" \
+	--nographics
+	--autostart
+	--noautoconsole
+
+while :
+do
+	virsh list --state-shutoff --name | grep {{ vm_name }}
+	if [ $? == 0 ]; then
+		virsh start {{ vm_name }}
+		exit 0
+	fi
+done

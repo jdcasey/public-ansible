@@ -1,0 +1,41 @@
+# This file is part of John Casey's public-ansible repository.
+
+# This is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This software is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this software.  If not, see <https://www.gnu.org/licenses/>.
+
+---
+- name: "NFS Client/{{ export_name }} :: install nfs-utils"
+  yum:
+    name: nfs-utils
+    state: present
+
+- name: "NFS Client/{{ export_name }} :: make {{ export_mount }}"
+  file:
+    path: "{{ export_mount }}"
+    state: directory
+    owner: "{{ export_uid|default(0) }}"
+    group: "{{ export_gid|default(0) }}"
+
+- name: "NFS Client/{{ export_name }} :: mount NFS volume {{ export_name }} under {{ export_mount }}"
+  mount:
+    path: "{{ export_mount }}"
+    src: "{{ nfs_server }}:/{{ exports_dir|default('exports') }}/{{ export_name }}"
+    fstype: nfs
+    state: mounted
+
+- name: "Create subdirs"
+  file:
+    path: "{{ export_mount }}/{{ item }}"
+    state: directory
+  with_items: "{{ subdirs }}"
+  when: subdirs

@@ -1,0 +1,58 @@
+# This file is part of John Casey's public-ansible repository.
+
+# This is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This software is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this software.  If not, see <https://www.gnu.org/licenses/>.
+---
+- hosts: localhost
+  remote_user: root
+  become: yes
+  vars: 
+    ##########################
+    # DEFINE THESE:
+    # ------------------------
+    # device: sdb
+    ##########################
+
+    root_fs: /tmp/pi-root
+    boot_fs: /tmp/pi-boot
+
+    img_url: https://downloads.raspberrypi.org/raspbian_lite_latest # TODO: Download from here!!
+    img_file_basename: 2018-11-13-raspbian-stretch-lite
+    # img_file_basename: 2019-07-10-raspbian-buster-lite
+    pi_image_zip: 'files/pi-install/{{ img_file_basename }}.zip'
+    pi_image: '/tmp/{{ img_file_basename }}.img'
+
+    pi_ver: 3
+
+  tasks:
+    - name: unarchive image
+      unarchive:
+        src: '{{ pi_image_zip }}'
+        dest: /tmp
+
+    - name: unmount partitions
+      mount:
+        state: absent
+        fstab: /tmp/fstab
+        src: "{{ item }}"
+        path: "{{ item }}"
+      with_items:
+        - '/dev/{{ device }}1'
+        - '/dev/{{ device }}2'
+
+    - name: copy partition
+      shell:  "dd if={{ pi_image }} of=/dev/{{ device }} bs=1048576"
+
+    - name: eject device
+      command: "eject /dev/{{ device }}"
+

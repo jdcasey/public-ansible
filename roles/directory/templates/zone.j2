@@ -1,0 +1,22 @@
+$TTL 3D
+{{ domain }}. IN  SOA ns.{{ domain }}. root.{{ domain }}. (
+                              {{domain_serial}} ; Serial
+                              8H         ; Refresh
+                              1H         ; Retry
+                              4W         ; Expire
+                              1H )       ; Negative Cache TTL
+;
+@ IN NS ns.{{ domain }}.
+@ IN MX 10 mx-1.pobox.com.
+@ IN MX 10 mx-2.pobox.com.
+@ IN MX 10 mx-3.pobox.com.
+@ IN MX 10 mx-4.pobox.com.
+@ IN MX 10 mx-5.pobox.com.
+;
+{{ domain }}.   IN A    {{dir_server}}
+ns                A       {{dir_server}}
+
+{% for host in domain_hosts %}{{host.name}}  A  {{host.address}}
+{% if host.get('aliases') %}{% for alias in host.aliases %}{{alias}}  CNAME  {{host.name}}
+{% endfor %}{% endif %}
+{% endfor %}

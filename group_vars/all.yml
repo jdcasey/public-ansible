@@ -1,0 +1,55 @@
+# This file is part of John Casey's public-ansible repository.
+
+# This is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This software is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this software.  If not, see <https://www.gnu.org/licenses/>.
+
+install_directory: yes
+enable_dhcpd: yes
+
+graphite_secret_key: TODO
+
+mqtt_host: m16.cloudmqtt.com
+mqtt_port: 10966
+mqtt_topic: netmeter
+mqtt_user: TODO
+mqtt_password: TODO
+
+dir_server: "{{ hostvars[groups['directory-servers'][0]]['ansible_host'] }}"
+dir_server_angle: "<< hostvars[groups['directory-servers'][0]]['ansible_host'] >>"
+backup_server: "{{ hostvars[groups['backup-servers'][0]]['ansible_host'] }}"
+
+dns_addresses:
+  - "{{ dir_server }}"
+  - '8.8.8.8'
+  - '9.9.9.9'
+  - '1.0.0.1'
+
+dns_search: TODO
+
+private_net: 192.168.1.0/24
+
+sys_keyname: id_rsa
+sys_privkey: "{{ lookup('file', lookup('env', 'HOME') + '/.ssh/' + sys_keyname) }}"
+sys_pubkey: "{{ lookup('file', lookup('env', 'HOME') + '/.ssh/' + sys_keyname + '.pub') }}"
+
+postgres_user_password: TODO
+
+domain: TODO
+domain_hosts: 
+  - name: TODO
+    hardware: TODO-MAC-ADDR
+    address: TODO-IP-ADDR
+    aliases:
+      - TODO-CNAME1
+      - TODO-CNAME2
+

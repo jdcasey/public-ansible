@@ -1,0 +1,128 @@
+# This file is part of John Casey's public-ansible repository.
+
+# This is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This software is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this software.  If not, see <https://www.gnu.org/licenses/>.
+---
+- hosts: localhost
+  remote_user: root
+  become: yes
+  vars: 
+    ##########################
+    # DEFINE THESE:
+    # ------------------------
+    # device: /dev/sdb
+    ##########################
+
+    root_fs: /tmp/pi-root
+    boot_fs: /tmp/pi-boot
+
+    img_url: https://downloads.raspberrypi.org/raspbian_lite_latest # TODO: Download from here!!
+    img_file_basename: 2018-11-13-raspbian-stretch-lite
+    pi_image_zip: 'files/pi-install/{{ img_file_basename }}.zip'
+    pi_image: '/tmp/{{ img_file_basename }}.img'
+
+    pi_ver: 3
+
+  tasks:
+    - name: unmount partitions
+      mount:
+        state: absent
+        fstab: /tmp/fstab
+        src: "{{ item }}"
+        path: "{{ item }}"
+      with_items:
+        - '/dev/{{ device }}1'
+        - '/dev/{{ device }}2'
+
+    - name: mount partitions
+      mount:
+        fstab: /tmp/fstab
+        src: "{{ item.src }}"
+        path: "{{ item.path }}"
+        fstype: "{{ item.type }}"
+        state: mounted
+      with_items:
+        - src: '/dev/{{ device }}1'
+          path: '{{ boot_fs }}'
+          type: vfat
+        - src: '/dev/{{ device }}2'
+          path: '{{ root_fs }}'
+          type: ext4
+
+    - name: replace files on boot partition
+      copy:
+        src: 'files/pi-install/{{ item }}'
+        dest: '{{ boot_fs }}/{{ item }}'
+      with_items:
+        - ssh
+        - wpa_supplicant.conf
+
+    - name: replace files on boot partition with templates
+      template:
+        src: 'templates/pi-install/{{ item }}.j2'
+        dest: '{{ boot_fs }}/{{ item }}'
+      with_items:
+        - config.txt
+
+    - name: Set ssh directory mode
+      file:
+        path: '{{ root_fs }}{{ item.path }}'
+        mode: '0700'
+        owner: '{{ item.owner }}'
+        group: '{{ item.group }}'
+        state: directory
+        setype: ssh_home_t
+      with_items:
+        - path: /home/pi/.ssh
+          owner: 1000
+          group: 1000
+
+        - path: /root/.ssh
+          owner: root
+          group: root
+
+    - name: replace files on partition
+      template:
+        src: 'templates/pi-install/{{ item.src }}'
+        dest: '{{ root_fs }}/{{ item.dest }}'
+        owner: "{{ item.owner | default('root') }}"
+        group: "{{ item.group | default('root') }}"
+        mode: "{{ item.mode | default('0644') }}"
+        setype: "{{ item.setype | default('_default') }}"
+      with_items:
+        - src: authorized_keys.j2
+          dest: home/pi/.ssh/authorized_keys
+          owner: 1000
+          group: 1000
+          setype: ssh_home_t
+          mode: '0600'
+        - src: authorized_keys.j2
+          dest: root/.ssh/authorized_keys
+          owner: root
+          group: root
+          setype: ssh_home_t
+          mode: '0600'
+
+    - name: unmount partitions
+      mount:
+        state: absent
+        fstab: /tmp/fstab
+        path: "{{ item.path }}"
+      with_items:
+        - src: '/dev/{{ device }}1'
+          path: '{{ boot_fs }}'
+          type: vfat
+        - src: '/dev/{{ device }}2'
+          path: '{{ root_fs }}'
+          type: ext4
+

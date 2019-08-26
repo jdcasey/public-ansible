@@ -1,0 +1,40 @@
+# This file is part of John Casey's public-ansible repository.
+
+# This is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This software is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this software.  If not, see <https://www.gnu.org/licenses/>.
+
+option domain-name "{{ domain }}";
+option domain-name-servers {% for addr in dns_addresses %}{{ addr }}{{ "" if loop.last else ", " }}{% endfor %};
+
+# For Ticket #6...not sure this will help, just trying to reduce DHCPINFORM clutter
+#option wpad code 252 = text;
+#option wpad "\n\000";
+
+default-lease-time 43200;
+max-lease-time 43200;
+
+authoritative;
+
+subnet 192.168.1.0 netmask 255.255.255.0 {
+    range 192.168.1.200 192.168.1.230;
+    option routers 192.168.1.1;
+
+{% for host in domain_hosts %}
+    Host {{ host.name }} {
+        hardware ethernet {{host.hardware}};
+        fixed-address {{host.address}};
+    }
+
+{% endfor %}
+}
+

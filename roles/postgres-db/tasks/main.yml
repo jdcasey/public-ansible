@@ -1,0 +1,60 @@
+# This file is part of John Casey's public-ansible repository.
+
+# This is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This software is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this software.  If not, see <https://www.gnu.org/licenses/>.
+
+---
+# - name: Enable PostgreSQL peer access for postgres user
+#   lineinfile: dest=/var/lib/pgsql/data/pg_hba.conf
+#   args:
+#     regexp: 'local all postgres peer'
+#     line: 'local all postgres peer'
+#     state: present
+#     insertbefore: EOF
+#   notify: restart postgresql for db change
+
+- name: Setup DB
+  postgresql_db:
+    name: "{{ db_name }}"
+    state: present
+    # login_password: "{{ postgres_user_password }}"
+    # login_host: 127.0.0.1
+    # port: 5432
+
+- name: Setup DB User
+  postgresql_user:
+    db: "{{ db_name }}"
+    name: "{{ db_user }}"
+    password: '{{ db_password }}'
+    # login_password: "{{ postgres_user_password }}"
+    # login_host: 127.0.0.1
+    # port: 5432
+
+- name: Grant privs to DB User
+  postgresql_privs:
+    db: "{{ db_name }}"
+    role: "{{ db_name }}"
+    privs: "{{ db_privs | default('ALL') }}"
+    # login_password: "{{ postgres_user_password }}"
+    # login_host: 127.0.0.1
+    # port: 5432
+    type: database
+
+# - name: Enable PostgreSQL peer access for postgres user
+#   lineinfile: dest=/var/lib/pgsql/data/pg_hba.conf
+#   args:
+#     regexp: 'local all postgres peer'
+#     state: absent
+#     insertbefore: EOF
+#   notify: restart postgresql for db change
+

@@ -1,0 +1,103 @@
+# This file is part of John Casey's public-ansible repository.
+
+# This is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This software is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this software.  If not, see <https://www.gnu.org/licenses/>.
+
+---
+- name: install packages
+  yum:
+    name: '{{ items }}'
+    state: latest
+  vars:
+    items:
+    - bind
+    - dhcp
+
+- name: copy scripts
+  copy:
+    src: files/scripts
+    dest: /usr/local/bin/
+    owner: root
+    group: root
+    mode: 0755
+
+- name: copy cron triggers
+  copy:
+    src: "{{ item }}"
+    dest: /etc/cron.d
+    owner: root
+    group: root
+    mode: 0644
+  with_fileglob:
+    - files/*.cron
+
+- name: open ports
+  firewalld:
+    port: '{{ item }}'
+    permanent: yes
+    immediate: yes
+    state: enabled
+  with_items:
+      - 53/tcp
+      - 53/udp
+      - 67/tcp
+      - 67/udp
+      - 68/tcp
+      - 68/udp
+
+- name: configure dhcpd
+  template:
+    src: templates/dhcpd.conf.j2
+    dest: /etc/dhcp/dhcpd.conf
+    owner: root
+    group: root
+    mode: 0640
+  notify: restart dhcpd
+
+- name: configure DNS zone files
+  template:
+    src: 'templates/{{ item.src }}'
+    dest: '/var/named/{{ item.target }}'
+    owner: root
+    group: named
+    mode: 0640
+  with_items:
+    - src: zone.j2
+      target: '{{ domain }}'
+    - src: 192.168.1.j2
+      target: 192.168.1
+  notify: restart named
+
+- name: configure DNS server
+  template:
+    src: templates/named.conf.j2
+    dest: /etc/named.conf
+    owner: root
+    group: named
+    mode: 0640
+    block_start_string: "<%"
+    block_end_string: "%>"
+    variable_start_string: "<<"
+    variable_end_string: ">>"
+  notify: restart named
+
+- name: enable dhcpd
+  service:
+    name: dhcpd
+    enabled: '{{ enable_dhcpd }}'
+
+- name: enable DNS
+  service:
+    name: named
+    enabled: yes
+

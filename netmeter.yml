@@ -1,0 +1,172 @@
+# This file is part of John Casey's public-ansible repository.
+
+# This is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This software is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this software.  If not, see <https://www.gnu.org/licenses/>.
+---
+- hosts: netmeter-servers
+  remote_user: root
+  vars:
+    metric_delay: 30
+    node_prefix: "{{ node_name | default('unknown') }}"
+    graph_server: "{{ hostvars[groups['graph-servers'][0]]['ansible_host'] }}"
+    venv_home: /opt/netmeter-reporter
+
+    reinstall: yes
+    full_playbook: no
+
+    scripts:
+      - speedtest
+      - fping
+
+  roles:
+    - role: common
+      when: full_playbook
+  
+  tasks:
+    - name: Stop old reporter services
+      systemd:
+        name: "{{ item }}"
+        enabled: no
+        state: stopped
+      with_items:
+        - speedtest-metrics.py
+        - fping-metrics.py
+      ignore_errors: true
+
+    - name: Remove old reporter files
+      file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - /etc/systemd/system/fping-metrics.py.service
+        - /etc/systemd/system/speedtest-metrics.py.service
+        - /opt/metrics-env
+        - /etc/metrics-environment.yml
+        - /usr/local/bin/fping-metrics.py
+        - /usr/local/bin/speedtest-metrics.py
+
+    - name: Install metric support packages
+      yum:
+        name: "{{ items }}"
+        state: present
+      vars:
+        items:
+          - python36-pip
+          - fping
+      when: ansible_os_family == "RedHat"
+
+    - name: Install metric support packages
+      apt:
+        name: "{{ items }}"
+        state: present
+      vars:
+        items:
+          - python36-pip
+          - fping
+      when: ansible_os_family != "RedHat"
+
+    - name: Remove virtualenv package
+      yum:
+        name: "{{ items }}"
+        state: absent
+      vars:
+        items:
+          - python-virtualenv
+          - python36-virtualenv
+      when: ansible_os_family == "RedHat"
+
+    - name: Remove virtualenv package
+      apt:
+        name: "{{ items }}"
+        state: absent
+      vars:
+        items:
+          - python-virtualenv
+          - python36-virtualenv
+      when: ansible_os_family != "RedHat"
+
+    - name: Upgrade pip
+      pip:
+        executable: pip3
+        name: "{{ items }}"
+        state: latest
+      vars:
+        items:
+        - pip
+        - virtualenv
+
+    - name: Remove virtualenv for reinstall
+      file:
+        path: "{{ venv_home }}"
+        state: absent
+      when: reinstall
+
+    - name: Upgrade pip in virtualenv
+      pip:
+        name: pip
+        state: latest
+        virtualenv: "{{ venv_home }}"
+        virtualenv_python: python3
+
+    - name: Setup virtualenv
+      pip:
+        name: buildchimp-netmeter
+        virtualenv: "{{ venv_home }}"
+        virtualenv_python: python3
+        state: latest
+        extra_args: "--no-cache-dir"
+      notify:
+        - restart services
+
+    - name: Setup netmeter config directory
+      file:
+        path: /etc/netmeter
+        state: directory
+        mode: 0755
+
+    - name: Install environment file
+      template:
+        src: templates/netmeter/reporter.yml.j2
+        dest: /etc/netmeter/reporter.yml
+        mode: '0644'
+      notify:
+        - restart services
+
+    - name: Install systemd services
+      template:
+        src: templates/netmeter/metric.service.j2
+        dest: "/etc/systemd/system/{{ item }}.service"
+      with_items: "{{ scripts }}"
+      register: service_install_result
+      notify:
+        - restart services
+
+    - name: Reload services
+      systemd:
+        daemon-reload: yes
+        enabled: yes
+        name: "{{ item }}"
+      when: service_install_result is succeeded and service_install_result is not skipped
+      with_items: "{{ scripts }}"
+      notify:
+        - restart services
+
+  handlers:
+    - name: restart services
+      systemd:
+        name: "{{ item }}"
+        state: restarted
+      with_items: "{{ scripts }}"
+
+
+

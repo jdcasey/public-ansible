@@ -1,0 +1,110 @@
+# This file is part of John Casey's public-ansible repository.
+
+# This is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This software is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this software.  If not, see <https://www.gnu.org/licenses/>.
+
+---
+- name: disable IPv6
+  lineinfile:
+    dest: /etc/sysctl.conf
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    state: present
+    insertbefore: EOF
+  with_items:
+    - regexp: '#?net.ipv6.conf.all.disable_ipv6'
+      line: 'net.ipv6.conf.all.disable_ipv6 = 1'
+    - regexp: '#?net.ipv6.conf.default.disable_ipv6'
+      line: 'net.ipv6.conf.default.disable_ipv6 = 1'
+  notify: update sysctl
+
+- name: set DNS addresses
+  template:
+    src: templates/resolv.conf.j2
+    dest: /etc/resolv.conf
+
+- name: "{{ inventory_hostname }} :: update / upgrade apt cache"
+  apt:
+    upgrade: yes
+    update_cache: yes
+    cache_valid_time: 86400 #One day
+
+- name: "{{ inventory_hostname }} :: update packages"
+  apt:
+    name: '*'
+    state: latest
+
+- name: "{{ inventory_hostname }} :: install base security and auto-update features"
+  apt:
+    name: '{{ packages }}'
+    state: latest
+  vars:
+    packages:
+      - python-selinux
+      - iptables-persistent
+      - fail2ban
+      - screen
+      - lsof
+
+- name: "{{ inventory_hostname }} :: update selinux packages"
+  apt:
+    name: 'selinux-policy*'
+    state: latest
+
+- name: "{{ inventory_hostname }} :: install jail.local fail2ban policy"
+  copy:
+    src: files/jail.local
+    dest: /etc/fail2ban/jail.local
+    owner: root
+    group: root
+    mode: 0640
+
+- name: "{{ inventory_hostname }} :: create fail2ban jail.d/ policies directory"
+  file:
+    path: /etc/fail2ban/jail.d
+    owner: root
+    group: root
+    mode: 0750
+    state: directory
+
+- name: "{{ inventory_hostname }} :: install sshd.local fail2ban policy"
+  copy:
+    src: files/sshd.local
+    dest: /etc/fail2ban/jail.d/sshd.local
+    owner: root
+    group: root
+    mode: 0640
+
+- name: "{{ inventory_hostname }} :: enable fail2ban and iptables"
+  service:
+    name: '{{item}}'
+    state: started
+    enabled: yes
+  with_items:
+    - netfilter-persistent
+    - fail2ban
+
+- name: "{{ inventory_hostname }} :: configure hostname"
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    mode: 0644
+    owner: root
+    group: root
+  with_items:
+    - src: templates/hostname.j2
+      dest: /etc/hostname
+    - src: templates/hosts.j2
+      dest: /etc/hosts
+  notify:
+    - reset hostname

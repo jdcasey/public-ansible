@@ -1,0 +1,148 @@
+# This file is part of John Casey's public-ansible repository.
+
+# This is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This software is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this software.  If not, see <https://www.gnu.org/licenses/>.
+
+---
+- name: install packages
+  sudo: yes
+  apt:
+    name: '{{ packages }}'
+    state: present
+  vars:
+    packages:
+      - python-pip
+      - python-dev
+      - python-setuptools
+      - python-virtualenv
+      - git
+      - libyaml-dev
+      - build-essential
+      - subversion
+      - libjpeg62-turbo-dev
+      - imagemagick
+      - libav-tools
+      - libv4l-dev
+      - cmake
+      - haproxy
+      - avahi-daemon
+      - libavahi-compat-libdnssd1
+
+- name: clone octoprint sources
+  git:
+    repo: https://github.com/foosel/OctoPrint.git
+    dest: /home/pi/OctoPrint
+
+- name: setup virtualenv
+  command: "virtualenv venv"
+  args:
+    chdir: /home/pi/OctoPrint
+    creates: /home/pi/OctoPrint/venv
+
+- name: upgrade pip
+  command: "/home/pi/OctoPrint/venv/bin/pip install pip --upgrade"
+  register: pip_upgrade
+  changed_when: "False == (pip_upgrade.stdout | regex_search('already up-to-date'))"
+
+- name: find pybonjour
+  stat:
+    path: /home/pi/OctoPrint/venv/lib/python2.7/site-packages/pybonjour.py
+  register: pybonjour
+  changed_when: False
+
+- name: install pybonjour
+  command: "/home/pi/OctoPrint/venv/bin/pip install https://goo.gl/SxQZ06"
+  when: 'pybonjour.stat.exists == False'
+
+- name: install OctoPrint
+  command: "/home/pi/OctoPrint/venv/bin/python setup.py install"
+  args:
+    chdir: /home/pi/OctoPrint
+    creates: /home/pi/OctoPrint/venv/bin/octoprint
+
+- name: clone mjpg-streamer sources
+  git:
+    repo: https://github.com/jacksonliam/mjpg-streamer.git
+    dest: /home/pi/mjpg-streamer
+
+- name: build mjpg-streamer
+  shell: |
+    LD_LIBRARY_PATH=.
+    exec make
+  args:
+    chdir: /home/pi/mjpg-streamer/mjpg-streamer-experimental
+    creates: /home/pi/mjpg-streamer/mjpg-streamer-experimental/mjpg_streamer
+
+- name: make .octoprint and scripts dirs
+  file:
+    path: '{{ item }}'
+    state: directory
+  with_items:
+    - /home/pi/.octoprint
+    - /home/pi/scripts
+
+- name: copy scripts
+  copy:
+    src: 'files/{{ item }}'
+    dest: /home/pi/scripts/
+    owner: pi
+    group: pi
+    mode: 0755
+  with_items:
+    - webcam
+    - webcamDaemon
+
+- name: copy OctoPrint systemd script
+  become: yes
+  copy:
+    src: files/octoprint.service
+    dest: /etc/systemd/system/octoprint.service
+    owner: root
+    group: root
+    mode: 0755
+  notify:
+    - systemd reload
+    - systemd restart octoprint
+
+- name: copy Webcam systemd script
+  become: yes
+  copy:
+    src: files/webcam.service
+    dest: /etc/systemd/system/webcam.service
+    owner: root
+    group: root
+    mode: 0755
+  notify:
+    - systemd reload
+    - systemd restart webcam
+
+- name: add pi to the dialout and tty groups
+  become: yes
+  user:
+    name: pi
+    groups: "{{ item }}"
+    append: yes
+  with_items:
+    - dialout
+    - tty
+
+- name: configure haproxy
+  become: yes
+  copy:
+    src: files/haproxy.cfg
+    dest: /etc/haproxy/haproxy.cfg
+    owner: haproxy
+    group: haproxy
+    mode: 0644
+  notify:
+    - systemd restart haproxy

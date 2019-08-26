@@ -1,0 +1,40 @@
+# This file is part of John Casey's public-ansible repository.
+
+# This is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This software is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this software.  If not, see <https://www.gnu.org/licenses/>.
+
+---
+server:
+    host: 127.0.0.1
+
+    # Add the rest of the config in!!!
+   - action: streamon
+     command: /home/pi/scripts/webcam start
+     confirm: false
+     name: Start video stream
+
+   - action: streamoff
+     command: /home/pi/scripts/webcam stop
+     confirm: false
+     name: Stop video stream
+system:
+  actions:
+  - name: Shutdown
+    command: sudo shutdown -h now
+    action: shutdown
+    confirm: You are about to shutdown the system.
+
+  - name: Reboot
+    command: sudo shutdown -r now
+    action: reboot
+    confirm: You are about to reboot the system

@@ -1,0 +1,9 @@
+hosts*
+.vagrant/
+.vagrant
+
+*.rpm
+*.retry
+atlassian-confluence*
+*raspbian-stretch-lite.zip
+*raspbian-stretch-lite.img

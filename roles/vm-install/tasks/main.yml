@@ -1,0 +1,66 @@
+# This file is part of John Casey's public-ansible repository.
+
+# This is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This software is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this software.  If not, see <https://www.gnu.org/licenses/>.
+
+---
+- name: "{{ vm_name }} :: install virt-install"
+  yum:
+    name: virt-install
+    state: present
+
+- name: "{{ vm_name }} :: create vm-init dir"
+  file:
+    path: /root/vm-init
+    owner: root
+    group: root
+    state: directory
+
+- name: "{{ vm_name }} :: create kickstart file"
+  template:
+    src: templates/vm-ks.cfg.j2
+    dest: "/root/vm-init/{{ vm_name }}-ks.cfg"
+
+- name: "{{ vm_name }} :: create vm init script"
+  template:
+    src: templates/vm-install.sh.j2
+    dest: "/root/vm-init/{{ vm_name }}-install.sh"
+    mode: 0755
+
+- name: "{{ vm_name }} :: check for existing VM"
+  shell: "/usr/bin/virsh list --all --name | grep {{ vm_name }}"
+  register: vm_check
+  ignore_errors: true
+  changed_when: false
+
+- name: "{{ vm_name }} :: create VM"
+  shell: "/root/vm-init/{{ vm_name }}-install.sh"
+  register: vm_create
+  when: vm_check is failed
+  async: 1200
+  poll: 10
+
+- name: "{{ vm_name }} :: autostart VM"
+  shell: "/usr/bin/virsh autostart {{ vm_name }}"
+  register: vm_autostart
+  when: vm_create is succeeded
+  changed_when: vm_create is not skipped and vm_autostart is succeeded
+
+- name: "{{ vm_name }} :: Wait up to 300 seconds for SSH"
+  wait_for:
+    port: 22
+    host: '{{ vm_ip }}'
+    search_regex: OpenSSH
+    delay: 0
+  vars:
+    ansible_connection: local

@@ -1,0 +1,87 @@
+# This file is part of John Casey's public-ansible repository.
+
+# This is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This software is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this software.  If not, see <https://www.gnu.org/licenses/>.
+
+---
+- name: install PostgreSQL
+  yum:
+    name: postgresql-server
+    state: latest
+
+- name: install psycopg2 for password encryption
+  yum:
+    name: python-psycopg2
+    state: latest
+
+- name: Initiate PostgreSQL database
+  command: postgresql-setup initdb
+  args:
+    creates: /var/lib/pgsql/data/postgresql.conf
+
+- name: ensure PostgreSQL is running
+  service:
+    name: postgresql
+    state: started
+    enabled: yes
+
+- name: open PostgreSQL port
+  firewalld:
+    port: 5432/tcp
+    permanent: yes
+    state: enabled
+    source: 192.168.121.0/24
+
+- name: Configure postsgresql.conf
+  template:
+    src: templates/postgresql.conf.j2 
+    dest: /var/lib/pgsql/data/postgresql.conf
+  notify: restart_postgresql
+
+- name: Configure pg_hba.conf
+  template:
+    src: templates/pg_hba.conf.j2 
+    dest: /var/lib/pgsql/data/pg_hba.conf
+  notify: restart_postgresql
+
+- name: Set postgres user password
+  user:
+    name: postgres
+    update_password: always
+    password: "{{ postgres_user_password }}"
+
+# - name: Ensure /usr/local/bin exists
+#   file:
+#     path: /usr/local/bin
+#     state: directory
+#     owner: root
+#     group: root
+#     mode: 0755
+
+# - name: Copy pg_backup.sh to /usr/local/bin
+#   copy:
+#     src: files/pg_backup.sh
+#     dest: /usr/local/bin/pg_backup.sh
+#     owner: root
+#     group: root
+#     mode: 0755
+
+# - name: Enable database dump in /etc/cron.d
+#   cron:
+#     name: database-dump
+#     hour: "10,14,18"
+#     minute: 0
+#     user: '{{ postgres_uid }}'
+#     cron_file: pg_backup-autorun
+#     job: "/usr/local/bin/pg_backup.sh"
+

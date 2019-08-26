@@ -1,0 +1,53 @@
+# This file is part of John Casey's public-ansible repository.
+
+# This is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This software is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this software.  If not, see <https://www.gnu.org/licenses/>.
+
+---
+- name: "NFS-LVM/{{ export_name }} :: ensure data LVM VG is available"
+  lvg:
+    vg: "{{ vg_name }}"
+    pvs: "{{ data_device }}"
+
+- name: "NFS-LVM/{{ export_name }} :: create LVM volume for {{ export_name }}"
+  lvol:
+    vg: "{{ vg_name }}"
+    lv: "{{ export_name }}"
+    size: "{{ export_size }}"
+  register: lvol_create
+
+- name: "NFS-LVM/{{ export_name }} :: format filesystem for {{ export_name }}"
+  filesystem:
+    fstype: xfs
+    dev: "/dev/{{ vg_name }}/{{ export_name }}"
+  when: lvol_create is success
+
+- name: "NFS-LVM/{{ export_name }} :: make /exports/{{ export_name }}"
+  file:
+    path: "/exports/{{ export_name }}"
+    state: directory
+    owner: "{{ export_uid|default(0) }}"
+    group: "{{ export_gid|default(0) }}"
+
+- name: "NFS-LVM/{{ export_name }} :: add {{ export_name }} to fstab"
+  mount:
+    src: "/dev/{{ vg_name }}/{{ export_name }}"
+    path: "/exports/{{ export_name }}"
+    fstype: xfs
+    state: mounted
+
+- name: "NFS-LVM/{{ export_name }} :: setup NFS exports"
+  template:
+    src: templates/nfs-exports.j2
+    dest: "/etc/exports.d/{{ export_name }}.exports"
+  notify: reinit nfs mounts

@@ -1,0 +1,2 @@
+ProxyPass {{ context_path }} http://{{ ip_address }}:{{ http_port }}{{ context_path }}
+ProxyPassReverse {{ context_path }} http://{{ ip_address }}:{{ http_port }}{{ context_path }}

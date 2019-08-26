@@ -1,0 +1,141 @@
+# This file is part of John Casey's public-ansible repository.
+
+# This is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This software is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this software.  If not, see <https://www.gnu.org/licenses/>.
+
+---
+- name: setup NetworkManager
+  copy:
+    src: files/NetworkManager.conf
+    dest: /etc/NetworkManager/NetworkManager.conf
+    owner: root
+    group: root
+    mode: 0640
+
+- name: disable IPv6
+  lineinfile:
+    dest: /etc/sysctl.conf
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    state: present
+    insertbefore: EOF
+  with_items:
+    - regexp: '#?net.ipv6.conf.all.disable_ipv6'
+      line: 'net.ipv6.conf.all.disable_ipv6 = 1'
+    - regexp: '#?net.ipv6.conf.default.disable_ipv6'
+      line: 'net.ipv6.conf.default.disable_ipv6 = 1'
+  notify: update sysctl
+
+
+- name: set DNS addresses
+  template:
+    src: templates/resolv.conf.j2
+    dest: /etc/resolv.conf
+
+- name: "{{ inventory_hostname }} :: update packages"
+  yum:
+    name: '*'
+    state: latest
+
+- name: "{{ inventory_hostname }} :: install epel-release"
+  yum:
+    name: epel-release
+    state: latest
+
+- name: "{{ inventory_hostname }} :: install base security and auto-update features"
+  yum:
+    name: '{{ items }}'
+    state: latest
+  vars:
+    items:
+    - yum-cron
+    - yum-utils
+    - libselinux-python
+    - firewalld
+    - fail2ban
+    - fail2ban-systemd
+    - bind-utils
+    - screen
+    - lsof
+
+- name: "{{ inventory_hostname }} :: update selinux packages"
+  yum:
+    name: 'selinux-policy*'
+    state: latest
+
+- name: "{{ inventory_hostname }} :: install jail.local fail2ban policy"
+  copy:
+    src: files/jail.local
+    dest: /etc/fail2ban/jail.local
+    owner: root
+    group: root
+    mode: 0640
+
+- name: "{{ inventory_hostname }} :: create fail2ban jail.d/ policies directory"
+  file:
+    path: /etc/fail2ban/jail.d
+    owner: root
+    group: root
+    mode: 0750
+    state: directory
+
+- name: "{{ inventory_hostname }} :: install sshd.local fail2ban policy"
+  copy:
+    src: files/sshd.local
+    dest: /etc/fail2ban/jail.d/sshd.local
+    owner: root
+    group: root
+    mode: 0640
+
+- name: "{{ inventory_hostname }} :: enable yum-cron and fail2ban"
+  service:
+    name: '{{item}}'
+    state: started
+    enabled: yes
+  with_items:
+    - yum-cron
+    - firewalld
+    - fail2ban
+
+- name: "{{ inventory_hostname }} :: configure hostname"
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    mode: 0644
+    owner: root
+    group: root
+  with_items:
+    - src: templates/hostname.j2
+      dest: /etc/hostname
+    - src: templates/hosts.j2
+      dest: /etc/hosts
+  notify:
+    - reset hostname
+
+- name: "{{ inventory_hostname }} :: configure yum-cron"
+  template:
+    src: templates/yum-cron.conf.j2
+    dest: /etc/yum/yum-cron.conf
+    owner: root
+    group: root
+    mode: 0644
+  notify: restart yum-cron
+
+- name: "{{ inventory_hostname }} :: configure yum-cron-hourly"
+  template:
+    src: templates/yum-cron-hourly.conf.j2
+    dest: /etc/yum/yum-cron-hourly.conf
+    owner: root
+    group: root
+    mode: 0644
+  notify: restart yum-cron

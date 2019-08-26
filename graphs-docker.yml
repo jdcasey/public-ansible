@@ -1,0 +1,247 @@
+# This file is part of John Casey's public-ansible repository.
+
+# This is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This software is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this software.  If not, see <https://www.gnu.org/licenses/>.
+---
+
+
+
+# - hosts: root-servers
+#   remote_user: root
+#   roles:
+#     - role: directory
+#       when: install_directory
+
+#     - role: vm-install
+#       vm_name: graphs
+#       vm_size: 8
+#       vm_ram: 2048
+#       vm_cpus: 2
+#       vm_ip: "{{ hostvars[groups['graph-servers'][0]]['ansible_host'] }}"
+
+# - hosts: nfs-servers
+#   remote_user: root
+#   roles:
+#     - role: nfs-server
+
+#     - role: nfs-lvm-export
+#       export_name: 'graphs'
+#       export_size: 20G
+#       export_uid: '1000'
+#       export_gid: '1000'
+
+- hosts: graph-servers
+  remote_user: root
+  vars:
+    db_name: graphite
+    db_user: graphite
+    db_pass: graphite
+    venv_home: /opt/netmeter
+    graph_server: "{{ hostvars[groups['graph-servers'][0]]['ansible_host'] }}"
+
+    reinstall: yes
+    full_playbook: no
+
+  roles:
+    - role: common
+      when: full_playbook
+
+    - role: docker-server
+      when: full_playbook
+
+    - role: nfs-client
+      nfs_server: "{{ hostvars[groups['nfs-servers'][0]]['ansible_host'] }}"
+      export_name: graphs
+      export_mount: /opt/graphs
+      subdirs:
+        - graphite/config
+        - graphite/storage
+        - graphite/statsd
+        - grafana
+      when: full_playbook
+
+  tasks:
+    - name: set ownership of NFS mounts
+      file:
+        path: "/opt/graphs/{{ item }}"
+        state: directory
+        owner: '1000'
+        group: '1000'
+      with_items:
+        - graphite/config
+        - graphite/storage
+        - graphite/statsd
+        - grafana
+      when: full_playbook
+
+    - name: "deploy graphite docker container"
+      docker_container:
+        name: graphite
+        image: graphiteapp/graphite-statsd
+        state: started
+        recreate: yes
+        pull: yes
+        restart_policy: always
+        volumes:
+          - /opt/graphs/graphite/config:/opt/graphite/conf
+          - /opt/graphs/graphite/storage:/opt/graphite/storage
+          - /opt/graphs/graphite/statsd:/opt/statsd
+        ports:
+          - 8125:8125/udp
+          - 8126:8126
+          - 8000:80
+          - 2003:2003
+          - 2004:2004
+          - 2023:2023
+          - 2024:2024
+
+    - name: "deploy grafana docker container"
+      docker_container:
+        name: grafana
+        image: grafana/grafana
+        state: started
+        recreate: yes
+        pull: yes
+        user: 1000:1000
+        links:
+          - graphite:graphite
+        restart_policy: always
+        volumes:
+          - /opt/graphs/grafana:/var/lib/grafana
+        ports:
+          - 3000:3000
+
+    - name: "open firewall ports"
+      firewalld:
+        port: '{{ item }}'
+        permanent: yes
+        state: enabled
+      with_items:
+          - 8125/udp
+          - 8126/tcp
+          - 8000/tcp
+          - 3000/tcp
+          - 2003/tcp
+          - 2004/tcp
+          - 2023/tcp
+          - 2024/tcp
+
+    - name: Remove old virtualenv
+      file:
+        path: "/opt/carbon-slack"
+        state: absent
+
+    - name: Stop old relay service
+      systemd:
+        name: carbon-slack-relay
+        enabled: no
+        state: stopped
+      ignore_errors: true
+
+    - name: Remove old environment file and systemd for relay
+      file:
+        state: absent
+        path: '{{ item }}'
+      with_items:
+        - /etc/carbon-slack.yml
+        - /etc/systemd/system/carbon-slack-relay.service
+
+    - name: Install relay support packages
+      yum:
+        name: "{{items}}"
+        state: present
+      vars:
+        items:
+          - python36
+          - python36-pip
+
+    - name: Remove virtualenv package
+      yum:
+        name: "{{ items }}"
+        state: absent
+      vars:
+        items:
+          - python-virtualenv
+          - python3-virtualenv
+
+    - name: Upgrade pip
+      pip:
+        executable: pip3
+        name: "{{ items }}"
+        state: latest
+      vars:
+        items:
+        - pip
+        - virtualenv
+
+    - name: Remove virtualenv for reinstall
+      file:
+        path: "{{ venv_home }}"
+        state: absent
+      when: reinstall
+
+    - name: Upgrade pip in virtualenv
+      pip:
+        name: pip
+        state: latest
+        virtualenv: "{{ venv_home }}"
+        virtualenv_python: python3
+
+    - name: Setup virtualenv
+      pip:
+        name: buildchimp-netmeter
+        virtualenv: "{{ venv_home }}"
+        virtualenv_python: python3
+        state: latest
+
+    - name: Setup netmeter config directory
+      file:
+        path: /etc/netmeter
+        state: directory
+        mode: 0755
+
+    - name: Install environment file and systemd for relay
+      template:
+        src: '{{ item.src }}'
+        dest: '{{ item.dest }}'
+        mode: '{{ item.mode }}'
+      with_items:
+        - src: templates/graphs/relay.yml.j2
+          dest: /etc/netmeter/relay.yml
+          mode: '0644'
+        - src: templates/graphs/netmeter-relay.service.j2
+          dest: /etc/systemd/system/netmeter-relay.service
+          mode: '0644'
+      notify:
+        - restart netmeter-relay
+      register: netmeter_relay_installed
+
+    - name: Systemd daemon-reload
+      systemd:
+        daemon_reload: yes
+      when: 'netmeter_relay_installed is succeeded'
+
+    - name: Notify services on reinstall
+      debug:
+        msg: Restarting relay
+      notify:
+        - restart netmeter-relay
+      when: reinstall
+
+  handlers:
+    - name: restart netmeter-relay
+      systemd:
+        name: netmeter-relay
+        enabled: yes
+        state: restarted
+

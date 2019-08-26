@@ -1,0 +1,52 @@
+# This file is part of John Casey's public-ansible repository.
+
+# This is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This software is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this software.  If not, see <https://www.gnu.org/licenses/>.
+
+---
+- name: "NFS Server :: install firewalld and nfs-utils"
+  yum:
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - firewalld
+    - nfs-utils
+
+- name: "NFS Server :: ensure firewalld is running"
+  service:
+    name: firewalld
+    state: started
+    enabled: yes
+
+- name: "NFS Server :: ensure services are running"
+  service:
+    name: "{{ item }}"
+    state: started
+    enabled: yes
+  with_items:
+    - rpcbind
+    - rpcbind.socket
+    - nfs-server
+    - nfs-lock
+    - nfs-idmapd
+
+- name: "NFS Server :: open ports"
+  firewalld:
+    service: '{{ item }}'
+    permanent: yes
+    state: enabled
+  with_items:
+      - nfs
+      - mountd
+      - rpc-bind
+
